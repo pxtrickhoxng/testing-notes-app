@@ -19,29 +19,29 @@ app.get('/api/notes', (request, response) => {
 
 app.get('/api/notes/:id', (request, response) => {
     const id = request.params.id
-    const note = notes.find(note => note.id === id)
-    
-  
-    if (note) {
-      response.json(note)
-    } else {
-      response.status(404).end()
-    }
-  })
+    Note.findById(id).then(note => {
+      if (note) {
+        response.json(note)
+      } else {
+        response.status(404).end()
+      }
+    }).catch(error => {
+      response.status(500).json({error: "Fetching note failed"})
+    })
+})
 
 app.delete('/api/notes/:id', (request, response) => {
     const id = request.params.id
-    notes = notes.filter(note => note.id !== id)
-  
-    response.status(204).end()
+    Note.findByIdAndDelete(id).then(result => {
+      if (result) {
+        response.status(204).end()
+      } else {
+        response.status(404).json({error: "Note not found"})
+      }
+    }).catch(error => {
+      response.status(500).json({error: "Deleting note failed"})
+    })
 })
-
-const generateId = () => {
-    const maxId = notes.length > 0
-      ? Math.max(...notes.map(n => Number(n.id)))
-      : 0
-    return String(maxId + 1)
-  }
   
 app.post('/api/notes', (request, response) => {
     const body = request.body
@@ -52,39 +52,37 @@ app.post('/api/notes', (request, response) => {
       })
     }
   
-    const note = {
+    const note = new Note({
       content: body.content,
-      important: body.important || false,
-      id: generateId(),
-    }
-  
-    notes = notes.concat(note)
-  
-    response.json(note)
+      important: body.important || false
+    })
+
+    note.save().then(savedNote => {
+      response.json(savedNote)
+    }).catch(err => {
+      console.log(err)
+      response.status(500).json({error: "Saving note failed."})
+    })
 })
 
 app.put('/api/notes/:id', (request, response) => {
   const id = request.params.id
   const body = request.body
-  console.log(body)
 
-  const noteIndex = notes.findIndex(note => note.id === id)
-
-  if (noteIndex === -1) {
-    return response.status(404).json({ error: 'note not found' })
-  }
-
-  const updatedNote = {
-    id: notes[noteIndex].id,
-    content: body.content ?? notes[noteIndex].content,
-    important: typeof body.important === 'boolean' ? body.important : notes[noteIndex].important,
-  }
-
-  notes[noteIndex] = updatedNote
-
-  response.json(updatedNote)
+  Note.findByIdAndUpdate(id, {
+    content: body.content,
+    important: typeof body.important === 'boolean' ? body.important : undefined
+  }, {new: true})
+  .then(updatedNote => {
+    if (updatedNote) {
+      response.json(updatedNote)
+    } else {
+      response.status(404).json({error: "Note not found"})
+    }
+  }).catch(err => {
+    response.status(500).json({error: "Updating note failed."})
+  })
 })
-
 
 const PORT = process.env.PORT
 
