@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { response } from 'express'
 import cors from 'cors'
 import Note from './models/note.js'
 
@@ -6,6 +6,7 @@ const app = express()
 app.use(express.json())
 app.use(cors())
 app.use(express.static('dist'))
+
 
 app.get('/', (request, response) => {
 response.send('<h1>Hello World!</h1>')
@@ -17,7 +18,7 @@ app.get('/api/notes', (request, response) => {
   })
 })
 
-app.get('/api/notes/:id', (request, response) => {
+app.get('/api/notes/:id', (request, response, next) => {
     const id = request.params.id
     Note.findById(id).then(note => {
       if (note) {
@@ -26,63 +27,74 @@ app.get('/api/notes/:id', (request, response) => {
         response.status(404).end()
       }
     }).catch(error => {
-      response.status(500).json({error: "Fetching note failed"})
+      next(error)
     })
 })
 
-app.delete('/api/notes/:id', (request, response) => {
+app.delete('/api/notes/:id', (request, response, next) => {
     const id = request.params.id
-    Note.findByIdAndDelete(id).then(result => {
+    Note.findByIdAndDelete(id)
+    .then(result => {
       if (result) {
         response.status(204).end()
       } else {
         response.status(404).json({error: "Note not found"})
       }
     }).catch(error => {
-      response.status(500).json({error: "Deleting note failed"})
+      next(error)
     })
 })
   
-app.post('/api/notes', (request, response) => {
+app.post('/api/notes', (request, response, next) => {
     const body = request.body
-  
-    if (!body.content) {
-      return response.status(400).json({ 
-        error: 'content missing' 
-      })
-    }
   
     const note = new Note({
       content: body.content,
-      important: body.important || false
+      important: body.important 
     })
 
     note.save().then(savedNote => {
       response.json(savedNote)
-    }).catch(err => {
-      console.log(err)
-      response.status(500).json({error: "Saving note failed."})
     })
+    .catch(err => {next(err)})
 })
 
 app.put('/api/notes/:id', (request, response) => {
-  const id = request.params.id
-  const body = request.body
+  const {content, important} = request.body 
 
-  Note.findByIdAndUpdate(id, {
-    content: body.content,
-    important: typeof body.important === 'boolean' ? body.important : undefined
-  }, {new: true})
-  .then(updatedNote => {
-    if (updatedNote) {
-      response.json(updatedNote)
-    } else {
-      response.status(404).json({error: "Note not found"})
+  Note.findById(request.params.id)
+  .then(note => {
+    if (!note) {
+      return response.status(404).end()
     }
-  }).catch(err => {
-    response.status(500).json({error: "Updating note failed."})
+
+    note.content = content
+    note.important = important
+
+    return note.save()
+    .then((updatedNote) => {
+      response.json(updatedNote)
+    })
   })
 })
+
+const unknownEndpoint = (req, res) => {
+  res.status(404).send({error: 'Unknown endpoint'})
+}
+
+app.use(unknownEndpoint)
+
+const errorHandler = (err, req, res, next) => {
+  console.error(err.message)
+  if (err.name === 'CastError') {
+    return res.status(400).send({error: 'malformatted id'})
+  } else if (err.name === 'ValidationError') {
+    return res.status(400).json({err: err.message})
+  }
+  next(err)
+}
+
+app.use(errorHandler)
 
 const PORT = process.env.PORT
 
